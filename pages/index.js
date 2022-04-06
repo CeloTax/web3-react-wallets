@@ -1,69 +1,518 @@
-import Head from 'next/head'
-import Image from 'next/image'
-import styles from '../styles/Home.module.css'
+import Head from "next/head";
+import styles from "../styles/Home.module.css";
+import {
+  Web3ReactProvider,
+  useWeb3React,
+  UnsupportedChainIdError,
+} from "@web3-react/core";
+import {
+  InjectedConnector,
+  NoEthereumProviderError,
+  UserRejectedRequestError as UserRejectedRequestErrorInjected,
+} from "@web3-react/injected-connector";
+import {
+  WalletConnectConnector,
+  UserRejectedRequestError as UserRejectedRequestErrorWalletConnect,
+} from "@web3-react/walletconnect-connector";
+import { Spinner } from "../components/Spinner";
+import React from "react";
+
+const injectedConnectorConfig = new InjectedConnector({
+  supportedChainIds: [1, 3, 4, 5, 42],
+});
+
+const walletconnectConfig = new WalletConnectConnector({
+  rpc: "https://speedy-nodes-nyc.moralis.io/d4f3b65d25674eff831dfea2/eth/ropsten",
+  chainId: 1,
+  bridge: "https://bridge.walletconnect.org",
+  qrcode: true,
+});
+
+const connectorsByName = {
+  ["injected"]: "injected",
+  ["walletconnect"]: "walletconnect",
+}
+
+function getErrorMessage(error) {
+  if (error instanceof NoEthereumProviderError) {
+    return "No Ethereum browser extension detected, install MetaMask on desktop or visit from a dApp browser on mobile.";
+  } else if (error instanceof UnsupportedChainIdError) {
+    return "You're connected to an unsupported network.";
+  } else if (
+    error instanceof UserRejectedRequestErrorInjected ||
+    error instanceof UserRejectedRequestErrorWalletConnect ||
+    error instanceof UserRejectedRequestErrorFrame
+  ) {
+    return "Please authorize this website to access your Ethereum account.";
+  } else {
+    console.error(error);
+    return "An unknown error occurred. Check the console for more details.";
+  }
+}
+
+function getLibrary(provider) {
+  const library = new Web3Provider(provider);
+  library.pollingInterval = 12000;
+  return library;
+}
+
+function ChainId() {
+  const { chainId } = useWeb3React();
+
+  return (
+    <>
+      <span>Chain Id</span>
+      <span role="img" aria-label="chain">
+        ⛓
+      </span>
+      <span>{chainId ?? ""}</span>
+    </>
+  );
+}
+
+function BlockNumber() {
+  const { chainId, library } = useWeb3React();
+
+  const [blockNumber, setBlockNumber] = React.useState();
+  React.useEffect(() => {
+    if (!!library) {
+      let stale = false;
+
+      library
+        .getBlockNumber()
+        .then((blockNumber) => {
+          if (!stale) {
+            setBlockNumber(blockNumber);
+          }
+        })
+        .catch(() => {
+          if (!stale) {
+            setBlockNumber(null);
+          }
+        });
+
+      const updateBlockNumber = (blockNumber) => {
+        setBlockNumber(blockNumber);
+      };
+      library.on("block", updateBlockNumber);
+
+      return () => {
+        stale = true;
+        library.removeListener("block", updateBlockNumber);
+        setBlockNumber(undefined);
+      };
+    }
+  }, [library, chainId]); // ensures refresh if referential identity of library doesn't change across chainIds
+
+  return (
+    <>
+      <span>Block Number</span>
+      <span role="img" aria-label="numbers">
+        🔢
+      </span>
+      <span>{blockNumber === null ? "Error" : blockNumber ?? ""}</span>
+    </>
+  );
+}
+
+function Balance() {
+  const { account, library, chainId } = useWeb3React();
+
+  const [balance, setBalance] = React.useState();
+  React.useEffect(() => {
+    if (!!account && !!library) {
+      let stale = false;
+
+      library
+        .getBalance(account)
+        .then((balance) => {
+          if (!stale) {
+            setBalance(balance);
+          }
+        })
+        .catch(() => {
+          if (!stale) {
+            setBalance(null);
+          }
+        });
+
+      return () => {
+        stale = true;
+        setBalance(undefined);
+      };
+    }
+  }, [account, library, chainId]); // ensures refresh if referential identity of library doesn't change across chainIds
+
+  return (
+    <>
+      <span>Balance</span>
+      <span role="img" aria-label="gold">
+        💰
+      </span>
+      <span>
+        {balance === null ? "Error" : balance ? `Ξ${formatEther(balance)}` : ""}
+      </span>
+    </>
+  );
+}
+
+function Header() {
+  const { active, error } = useWeb3React();
+
+  return (
+    <>
+      <h1 style={{ margin: "1rem", textAlign: "right" }}>
+        {active ? "🟢" : error ? "🔴" : "🟠"}
+      </h1>
+      <h3
+        style={{
+          display: "grid",
+          gridGap: "1rem",
+          gridTemplateColumns: "1fr min-content 1fr",
+          maxWidth: "20rem",
+          lineHeight: "2rem",
+          margin: "auto",
+        }}
+      >
+        <ChainId />
+        <BlockNumber />
+        <Account />
+        <Balance />
+      </h3>
+    </>
+  );
+}
+
+function Account() {
+  const { account } = useWeb3React();
+
+  return (
+    <>
+      <span>Account</span>
+      <span role="img" aria-label="robot">
+        🤖
+      </span>
+      <span>
+        {account === null
+          ? "-"
+          : account
+          ? `${account.substring(0, 6)}...${account.substring(
+              account.length - 4
+            )}`
+          : ""}
+      </span>
+    </>
+  );
+}
 
 export default function Home() {
+  return(
+  <Web3ReactProvider getLibrary={getLibrary}>
+    <TheApp />
+  </Web3ReactProvider>
+  );
+
+  // const walletConnect = () => {};
+
+  // const injectedConnect = () => {};
+
+  // return (
+  //   <div className={styles.container}>
+  //     <Head>
+  //       <title>Create Next App</title>
+  //       <meta name="description" content="Generated by create next app" />
+  //       <link rel="icon" href="/favicon.ico" />
+  //     </Head>
+
+  //     <main className={styles.main}>
+  //       <button onClick={injectedConnect}>Intected Connector</button>
+  //       <button onClick={walletConnect}>Wallet Connect</button>
+  //     </main>
+  //   </div>
+  // );
+}
+
+function TheApp() {
+  const context = useWeb3React();
+  const {
+    connector,
+    library,
+    chainId,
+    account,
+    activate,
+    deactivate,
+    active,
+    error,
+  } = context;
+
+  // handle logic to recognize the connector currently being activated
+  const [activatingConnector, setActivatingConnector] = React.useState();
+  React.useEffect(() => {
+    if (activatingConnector && activatingConnector === connector) {
+      setActivatingConnector(undefined);
+    }
+  }, [activatingConnector, connector]);
+
+  // handle logic to connect in reaction to certain events on the injected ethereum provider, if it exists
+  useInactiveListener(!triedEager || !!activatingConnector);
+
   return (
-    <div className={styles.container}>
-      <Head>
-        <title>Create Next App</title>
-        <meta name="description" content="Generated by create next app" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+    <>
+      <Header />
+      <hr style={{ margin: "2rem" }} />
+      <div
+        style={{
+          display: "grid",
+          gridGap: "1rem",
+          gridTemplateColumns: "1fr 1fr",
+          maxWidth: "20rem",
+          margin: "auto",
+        }}
+      >
+        {Object.keys(connectorsByName).map((name) => {
+          const currentConnector = connectorsByName[name];
+          const activating = currentConnector === activatingConnector;
+          const connected = currentConnector === connector;
+          const disabled =
+            !triedEager || !!activatingConnector || connected || !!error;
 
-      <main className={styles.main}>
-        <h1 className={styles.title}>
-          Welcome to <a href="https://nextjs.org">Next.js!</a>
-        </h1>
-
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.js</code>
-        </p>
-
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h2>Documentation &rarr;</h2>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h2>Learn &rarr;</h2>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
-
-          <a
-            href="https://github.com/vercel/next.js/tree/canary/examples"
-            className={styles.card}
+          return (
+            <button
+              style={{
+                height: "3rem",
+                borderRadius: "1rem",
+                borderColor: activating
+                  ? "orange"
+                  : connected
+                  ? "green"
+                  : "unset",
+                cursor: disabled ? "unset" : "pointer",
+                position: "relative",
+              }}
+              disabled={disabled}
+              key={name}
+              onClick={() => {
+                setActivatingConnector(currentConnector);
+                activate(connectorsByName[name], (error) => {
+                  if (error) {
+                    setActivatingConnector(undefined);
+                  }
+                });
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: "0",
+                  left: "0",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  color: "black",
+                  margin: "0 0 0 1rem",
+                }}
+              >
+                {activating && (
+                  <Spinner
+                    color={"black"}
+                    style={{ height: "25%", marginLeft: "-1rem" }}
+                  />
+                )}
+                {connected && (
+                  <span role="img" aria-label="check">
+                    ✅
+                  </span>
+                )}
+              </div>
+              {name}
+            </button>
+          );
+        })}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        {(active || error) && (
+          <button
+            style={{
+              height: "3rem",
+              marginTop: "2rem",
+              borderRadius: "1rem",
+              borderColor: "red",
+              cursor: "pointer",
+            }}
+            onClick={() => {
+              deactivate();
+            }}
           >
-            <h2>Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
+            Deactivate
+          </button>
+        )}
 
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
+        {!!error && (
+          <h4 style={{ marginTop: "1rem", marginBottom: "0" }}>
+            {getErrorMessage(error)}
+          </h4>
+        )}
+      </div>
+
+      <hr style={{ margin: "2rem" }} />
+
+      <div
+        style={{
+          display: "grid",
+          gridGap: "1rem",
+          gridTemplateColumns: "fit-content",
+          maxWidth: "20rem",
+          margin: "auto",
+        }}
+      >
+        {!!(library && account) && (
+          <button
+            style={{
+              height: "3rem",
+              borderRadius: "1rem",
+              cursor: "pointer",
+            }}
+            onClick={() => {
+              library
+                .getSigner(account)
+                .signMessage("👋")
+                .then((signature) => {
+                  window.alert(`Success!\n\n${signature}`);
+                })
+                .catch((error) => {
+                  window.alert(
+                    "Failure!" +
+                      (error && error.message ? `\n\n${error.message}` : "")
+                  );
+                });
+            }}
           >
-            <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
-        </div>
-      </main>
-
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by{' '}
-          <span className={styles.logo}>
-            <Image src="/vercel.svg" alt="Vercel Logo" width={72} height={16} />
-          </span>
-        </a>
-      </footer>
-    </div>
-  )
+            Sign Message
+          </button>
+        )}
+        {!!(
+          connector === connectorsByName[ConnectorNames.Network] && chainId
+        ) && (
+          <button
+            style={{
+              height: "3rem",
+              borderRadius: "1rem",
+              cursor: "pointer",
+            }}
+            onClick={() => {
+              connector.changeChainId(chainId === 1 ? 4 : 1);
+            }}
+          >
+            Switch Networks
+          </button>
+        )}
+        {connector === connectorsByName[ConnectorNames.WalletConnect] && (
+          <button
+            style={{
+              height: "3rem",
+              borderRadius: "1rem",
+              cursor: "pointer",
+            }}
+            onClick={() => {
+              connector.close();
+            }}
+          >
+            Kill WalletConnect Session
+          </button>
+        )}
+        {connector === connectorsByName[ConnectorNames.WalletLink] && (
+          <button
+            style={{
+              height: "3rem",
+              borderRadius: "1rem",
+              cursor: "pointer",
+            }}
+            onClick={() => {
+              connector.close();
+            }}
+          >
+            Kill WalletLink Session
+          </button>
+        )}
+        {connector === connectorsByName[ConnectorNames.Fortmatic] && (
+          <button
+            style={{
+              height: "3rem",
+              borderRadius: "1rem",
+              cursor: "pointer",
+            }}
+            onClick={() => {
+              connector.close();
+            }}
+          >
+            Kill Fortmatic Session
+          </button>
+        )}
+        {connector === connectorsByName[ConnectorNames.Magic] && (
+          <button
+            style={{
+              height: "3rem",
+              borderRadius: "1rem",
+              cursor: "pointer",
+            }}
+            onClick={() => {
+              connector.close();
+            }}
+          >
+            Kill Magic Session
+          </button>
+        )}
+        {connector === connectorsByName[ConnectorNames.Portis] && (
+          <>
+            {chainId !== undefined && (
+              <button
+                style={{
+                  height: "3rem",
+                  borderRadius: "1rem",
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  connector.changeNetwork(chainId === 1 ? 100 : 1);
+                }}
+              >
+                Switch Networks
+              </button>
+            )}
+            <button
+              style={{
+                height: "3rem",
+                borderRadius: "1rem",
+                cursor: "pointer",
+              }}
+              onClick={() => {
+                connector.close();
+              }}
+            >
+              Kill Portis Session
+            </button>
+          </>
+        )}
+        {connector === connectorsByName[ConnectorNames.Torus] && (
+          <button
+            style={{
+              height: "3rem",
+              borderRadius: "1rem",
+              cursor: "pointer",
+            }}
+            onClick={() => {
+              connector.close();
+            }}
+          >
+            Kill Torus Session
+          </button>
+        )}
+      </div>
+    </>
+  );
 }
